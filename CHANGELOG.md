@@ -1,4 +1,7 @@
 ## [Unreleased]
+### Added
+* `Bearer <token>` is now accepted in the `authorization` header alongside a bare token (#7)
+* New plug options: `scheme: :any | :bearer | :none` and `header: "..."` to control how the token is read (#7)
 
 ## [1.0.0] (2026-10-29)
 ### Changed
