@@ -142,6 +142,17 @@ Every request through the plug emits one of two events:
 end, nil)
 ```
 
+## Configuration errors
+
+Misconfiguration raises an `ArgumentError` with a message naming the realm and the expected shape, rather than failing obscurely on the first request:
+
+- `auth_realm` must be an atom (checked when the plug is initialised)
+- a realm named in `auth_realm` must be configured as a keyword list with a `service_tokens` key
+- `service_tokens` must be a keyword list of service name to token
+- every token must be a string or a list of strings
+
+If a realm ends up with no tokens at all, a warning is logged once and every request to that realm is rejected.
+
 ## Notes
 
 - Token value can be a comma-separated list of tokens
