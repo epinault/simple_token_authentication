@@ -1,8 +1,8 @@
 # SimpleTokenAuthentication
 
-[![Build Status](https://github.com/podium/simple_token_authentication/actions/workflows/ci.yml/badge.svg)](https://github.com/podium/simple_token_authentication/actions/workflows/ci.yml) [![Hex.pm](https://img.shields.io/hexpm/v/simple_token_authentication.svg)](https://hex.pm/packages/simple_token_authentication) [![Documentation](https://img.shields.io/badge/documentation-gray)](https://hexdocs.pm/simple_token_authentication)
+[![Build Status](https://github.com/epinault/simple_token_authentication/actions/workflows/ci.yml/badge.svg)](https://github.com/epinault/simple_token_authentication/actions/workflows/ci.yml) [![Hex.pm](https://img.shields.io/hexpm/v/simple_token_authentication.svg)](https://hex.pm/packages/simple_token_authentication) [![Documentation](https://img.shields.io/badge/documentation-gray)](https://hexdocs.pm/simple_token_authentication)
 [![Total Download](https://img.shields.io/hexpm/dt/simple_token_authentication.svg)](https://hex.pm/packages/simple_token_authentication)
-[![License](https://img.shields.io/hexpm/l/simple_token_authentication.svg)](https://github.com/podium/simple_token_authentication/blob/master/LICENSE.md)
+[![License](https://img.shields.io/hexpm/l/simple_token_authentication.svg)](https://github.com/epinault/simple_token_authentication/blob/master/LICENSE.md)
 ## Usage
 ### Phoenix Integration
 
@@ -28,7 +28,7 @@ end
 
 ```elixir
 def deps do
-  [{:simple_token_authentication, "~> 0.6.0"}]
+  [{:simple_token_authentication, "~> 1.0"}]
 end
 ```
 
