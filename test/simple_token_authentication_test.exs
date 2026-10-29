@@ -47,8 +47,8 @@ defmodule SimpleTokenAuthenticationTest do
         # Create a test connection
         conn = conn(:get, "/foo")
 
-        # Invoke the plug
-        conn = SimpleTokenAuthentication.call(conn, @opts)
+        # Invoke the plug (empty config logs a warning)
+        {conn, _log} = with_log(fn -> SimpleTokenAuthentication.call(conn, @opts) end)
 
         # Assert the response and status
         assert conn.status == 401
@@ -76,8 +76,8 @@ defmodule SimpleTokenAuthenticationTest do
           |> conn("/foo")
           |> put_req_header("authorization", "")
 
-        # Invoke the plug
-        conn = SimpleTokenAuthentication.call(conn, @opts)
+        # Invoke the plug (an empty token string yields no tokens, which logs a warning)
+        {conn, _log} = with_log(fn -> SimpleTokenAuthentication.call(conn, @opts) end)
 
         # Assert the response and status
         assert conn.status == 401
@@ -204,11 +204,13 @@ defmodule SimpleTokenAuthenticationTest do
       # Create a test connection
       conn = conn(:get, "/foo")
 
-      # Invoke the plug with another realm
-      conn =
-        SimpleTokenAuthentication.call(conn,
-          auth_realm: :another_realm
-        )
+      # Invoke the plug with another realm (empty realm logs a warning)
+      {conn, _log} =
+        with_log(fn ->
+          SimpleTokenAuthentication.call(conn,
+            auth_realm: :another_realm
+          )
+        end)
 
       # Assert the response and status
       assert conn.status == 401
@@ -232,18 +234,20 @@ defmodule SimpleTokenAuthenticationTest do
 
   describe "another_realm_simple_token_authentication - empty token" do
     test "returns a 401 status code" do
-      with_other_realm_service_tokens("") do
+      with_other_realm_service_tokens([]) do
         # Create a test connection
         conn =
           :get
           |> conn("/foo")
           |> put_req_header("authorization", "")
 
-        # Invoke the plug with another realm
-        conn =
-          SimpleTokenAuthentication.call(conn,
-            auth_realm: :another_realm
-          )
+        # Invoke the plug with another realm (empty realm logs a warning)
+        {conn, _log} =
+          with_log(fn ->
+            SimpleTokenAuthentication.call(conn,
+              auth_realm: :another_realm
+            )
+          end)
 
         # Assert the response and status
         assert conn.status == 401

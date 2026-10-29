@@ -36,10 +36,17 @@ defmodule SimpleTokenAuthentication do
   @behaviour Plug
 
   import Plug.Conn
+  require Logger
 
   @schemes [:any, :bearer, :none]
 
   def init(opts) do
+    realm = Keyword.get(opts, :auth_realm)
+
+    unless is_atom(realm) do
+      raise ArgumentError, "invalid :auth_realm #{inspect(realm)}, expected an atom"
+    end
+
     scheme = Keyword.get(opts, :scheme, :any)
 
     unless scheme in @schemes do
@@ -146,24 +153,6 @@ defmodule SimpleTokenAuthentication do
     end
   end
 
-  defp build_token_map(nil) do
-    global = token()
-    services = service_tokens(nil)
-
-    token_map =
-      for {service, tokens} <- [{:global, global} | services],
-          token <- List.wrap(tokens),
-          token != "",
-          reduce: %{} do
-        acc ->
-          Map.put(acc, token, service)
-      end
-
-    :persistent_term.put(store(nil), token_map)
-
-    token_map
-  end
-
   defp build_token_map(realm) do
     services = service_tokens(realm)
 
@@ -176,28 +165,81 @@ defmodule SimpleTokenAuthentication do
           Map.put(acc, token, service)
       end
 
+    if token_map == %{} do
+      Logger.warning(
+        "SimpleTokenAuthentication: no tokens configured for realm #{inspect(store(realm))}, " <>
+          "every request will be rejected"
+      )
+    end
+
     :persistent_term.put(store(realm), token_map)
 
     token_map
   end
 
   defp service_tokens(nil) do
-    :simple_token_authentication
-    |> Application.get_env(:service_tokens)
-    |> List.wrap()
+    global = Application.get_env(:simple_token_authentication, :token)
+    services = Application.get_env(:simple_token_authentication, :service_tokens)
+
+    validate_tokens!(:token, global, :default)
+
+    [{:global, global} | validate_service_tokens!(services, :default)]
   end
 
   defp service_tokens(realm) do
-    :simple_token_authentication
-    |> Application.get_env(realm)
-    |> Keyword.get(:service_tokens)
-    |> List.wrap()
+    case Application.get_env(:simple_token_authentication, realm) do
+      nil ->
+        raise ArgumentError,
+              "SimpleTokenAuthentication realm #{inspect(realm)} is not configured, expected " <>
+                "config :simple_token_authentication, #{inspect(realm)}, service_tokens: [...]"
+
+      config when is_list(config) ->
+        if Keyword.keyword?(config) do
+          config |> Keyword.get(:service_tokens) |> validate_service_tokens!(realm)
+        else
+          raise_realm_shape!(realm, config)
+        end
+
+      config ->
+        raise_realm_shape!(realm, config)
+    end
   end
 
-  defp token do
-    :simple_token_authentication
-    |> Application.get_env(:token)
-    |> List.wrap()
+  defp raise_realm_shape!(realm, config) do
+    raise ArgumentError,
+          "SimpleTokenAuthentication realm #{inspect(realm)} must be a keyword list with a " <>
+            ":service_tokens key, got: #{inspect(config)}"
+  end
+
+  defp validate_service_tokens!(nil, _realm), do: []
+
+  defp validate_service_tokens!(services, realm) when is_list(services) do
+    unless Keyword.keyword?(services) do
+      raise ArgumentError,
+            "SimpleTokenAuthentication :service_tokens for realm #{inspect(realm)} must be a " <>
+              "keyword list of service name to token, got: #{inspect(services)}"
+    end
+
+    Enum.each(services, fn {service, tokens} -> validate_tokens!(service, tokens, realm) end)
+    services
+  end
+
+  defp validate_service_tokens!(services, realm) do
+    raise ArgumentError,
+          "SimpleTokenAuthentication :service_tokens for realm #{inspect(realm)} must be a " <>
+            "keyword list of service name to token, got: #{inspect(services)}"
+  end
+
+  defp validate_tokens!(_name, nil, _realm), do: :ok
+
+  defp validate_tokens!(name, tokens, realm) do
+    unless Enum.all?(List.wrap(tokens), &is_binary/1) do
+      raise ArgumentError,
+            "SimpleTokenAuthentication token for #{inspect(name)} in realm #{inspect(realm)} " <>
+              "must be a string or list of strings, got: #{inspect(tokens)}"
+    end
+
+    :ok
   end
 
   defp store(nil) do

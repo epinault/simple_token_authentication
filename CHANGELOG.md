@@ -1,5 +1,7 @@
 ## [Unreleased]
 ### Added
+* Configuration is validated with clear `ArgumentError` messages: `auth_realm` must be an atom, a realm must be configured as a keyword list with `service_tokens`, and tokens must be strings or lists of strings (#11)
+* A warning is logged once per realm when no tokens are configured, instead of silently rejecting every request (#11)
 * New `on_failure` plug option (`{module, function}` or 1-arity function) to customise the response when no token matches (#9)
 * The default 401 response now includes a `www-authenticate: Bearer realm="<realm>"` header (#9)
 * Emit `[:simple_token_authentication, :auth, :success | :failure]` telemetry events with realm, service and conn metadata (#8)
