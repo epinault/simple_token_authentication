@@ -20,8 +20,13 @@ defmodule SimpleTokenAuthentication.Mixfile do
       ],
       docs: docs(),
       package: package(),
-      test_coverage: [summary: [threshold: 90]]
+      test_coverage: [summary: [threshold: 90]],
+      aliases: aliases()
     ]
+  end
+
+  def cli do
+    [preferred_envs: [precommit: :test]]
   end
 
   def application do
@@ -34,6 +39,18 @@ defmodule SimpleTokenAuthentication.Mixfile do
       {:dialyxir, "~> 1.4", only: :dev, runtime: false},
       {:ex_doc, "~> 0.28", only: :dev, runtime: false},
       {:plug, ">= 1.3.0"}
+    ]
+  end
+
+  defp aliases do
+    [
+      precommit: [
+        "format --check-formatted",
+        "deps.unlock --check-unused",
+        "compile --warnings-as-errors",
+        "test --warnings-as-errors --cover",
+        "credo --strict"
+      ]
     ]
   end
 
