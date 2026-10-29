@@ -105,6 +105,26 @@ defmodule MyApp.Router
 end
 ```
 
+## Custom failure response
+
+By default a request with no matching token gets a `401` with a JSON body and a `www-authenticate: Bearer realm="<realm>"` header. Pass `on_failure` to send your own response. It receives the `Plug.Conn` and must send a response; the plug halts the conn afterwards.
+
+```elixir
+defmodule MyApp.AuthError do
+  import Plug.Conn
+
+  def unauthorized(conn) do
+    conn
+    |> put_resp_content_type("application/problem+json")
+    |> send_resp(401, ~s({"title": "Unauthorized"}))
+  end
+end
+
+plug SimpleTokenAuthentication, on_failure: {MyApp.AuthError, :unauthorized}
+```
+
+A 1-arity anonymous function is also accepted, but Phoenix routers evaluate plug options at compile time, so prefer the `{module, function}` form there.
+
 ## Telemetry
 
 Every request through the plug emits one of two events:

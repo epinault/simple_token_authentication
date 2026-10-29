@@ -13,6 +13,11 @@ defmodule SimpleTokenAuthentication do
       * `:bearer` - requires `Bearer <token>`
       * `:none` - requires a bare token
 
+    * `:on_failure` - how to respond when no token matches. Either a 1-arity
+      function or a `{module, function}` tuple; it receives the `Plug.Conn` and
+      must send a response. The plug halts the conn afterwards regardless.
+      Defaults to a `401` JSON response with a `www-authenticate` header.
+
   The `Bearer` scheme name is matched case-insensitively.
 
   ## Telemetry
@@ -44,6 +49,21 @@ defmodule SimpleTokenAuthentication do
 
     header = opts |> Keyword.get(:header, "authorization") |> String.downcase()
 
+    case Keyword.get(opts, :on_failure) do
+      nil ->
+        :ok
+
+      fun when is_function(fun, 1) ->
+        :ok
+
+      {mod, fun} when is_atom(mod) and is_atom(fun) ->
+        :ok
+
+      other ->
+        raise ArgumentError,
+              "invalid :on_failure #{inspect(other)}, expected a 1-arity function or {module, function}"
+    end
+
     opts
     |> Keyword.put(:scheme, scheme)
     |> Keyword.put(:header, header)
@@ -74,11 +94,20 @@ defmodule SimpleTokenAuthentication do
         emit(:failure, %{realm: store(realm), conn: conn})
 
         conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(401, ~s({ "error": "Invalid shared key" }))
+        |> failure_response(Keyword.get(opts, :on_failure), store(realm))
         |> halt()
     end
   end
+
+  defp failure_response(conn, nil, realm) do
+    conn
+    |> put_resp_header("www-authenticate", ~s(Bearer realm="#{realm}"))
+    |> put_resp_content_type("application/json")
+    |> send_resp(401, ~s({ "error": "Invalid shared key" }))
+  end
+
+  defp failure_response(conn, fun, _realm) when is_function(fun, 1), do: fun.(conn)
+  defp failure_response(conn, {mod, fun}, _realm), do: apply(mod, fun, [conn])
 
   defp emit(event, metadata) do
     :telemetry.execute(
