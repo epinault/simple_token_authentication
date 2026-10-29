@@ -5,7 +5,6 @@ defmodule SimpleTokenAuthentication do
   @behaviour Plug
 
   import Plug.Conn
-  require Logger
 
   def init(opts), do: opts
 
