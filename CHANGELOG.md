@@ -1,5 +1,7 @@
 ## [Unreleased]
 ### Added
+* New `on_failure` plug option (`{module, function}` or 1-arity function) to customise the response when no token matches (#9)
+* The default 401 response now includes a `www-authenticate: Bearer realm="<realm>"` header (#9)
 * Emit `[:simple_token_authentication, :auth, :success | :failure]` telemetry events with realm, service and conn metadata (#8)
 * Declare `telemetry` as an explicit dependency (it was already required transitively through `plug`)
 * `Bearer <token>` is now accepted in the `authorization` header alongside a bare token (#7)
