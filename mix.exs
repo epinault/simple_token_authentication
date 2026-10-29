@@ -38,7 +38,8 @@ defmodule SimpleTokenAuthentication.Mixfile do
       {:credo, "~> 1.6", only: [:dev, :test]},
       {:dialyxir, "~> 1.4", only: :dev, runtime: false},
       {:ex_doc, "~> 0.28", only: :dev, runtime: false},
-      {:plug, ">= 1.3.0"}
+      {:plug, ">= 1.3.0"},
+      {:telemetry, "~> 0.4 or ~> 1.0"}
     ]
   end
 

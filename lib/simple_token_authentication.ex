@@ -14,6 +14,19 @@ defmodule SimpleTokenAuthentication do
       * `:none` - requires a bare token
 
   The `Bearer` scheme name is matched case-insensitively.
+
+  ## Telemetry
+
+  The following events are emitted on every request through the plug:
+
+    * `[:simple_token_authentication, :auth, :success]` - measurements
+      `%{system_time: integer}`, metadata `%{realm: atom, service: atom, conn: Plug.Conn.t()}`
+    * `[:simple_token_authentication, :auth, :failure]` - measurements
+      `%{system_time: integer}`, metadata `%{realm: atom, conn: Plug.Conn.t()}`
+
+  `:realm` is `:default` when no `:auth_realm` option is given. `:service` is
+  the matched service name, or `:global` for the top-level `:token`. The
+  presented token is never included in metadata.
   """
   @behaviour Plug
 
@@ -53,15 +66,26 @@ defmodule SimpleTokenAuthentication do
 
     case secure_lookup(token_map, val) do
       {:ok, service_name} ->
+        emit(:success, %{realm: store(realm), service: service_name, conn: conn})
         Logger.metadata(service_name: service_name)
         assign(conn, :simple_token_auth_service, service_name)
 
       :error ->
+        emit(:failure, %{realm: store(realm), conn: conn})
+
         conn
         |> put_resp_content_type("application/json")
         |> send_resp(401, ~s({ "error": "Invalid shared key" }))
         |> halt()
     end
+  end
+
+  defp emit(event, metadata) do
+    :telemetry.execute(
+      [:simple_token_authentication, :auth, event],
+      %{system_time: System.system_time()},
+      metadata
+    )
   end
 
   defp secure_lookup(token_map, val) do

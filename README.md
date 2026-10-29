@@ -105,6 +105,23 @@ defmodule MyApp.Router
 end
 ```
 
+## Telemetry
+
+Every request through the plug emits one of two events:
+
+| Event | Measurements | Metadata |
+|---|---|---|
+| `[:simple_token_authentication, :auth, :success]` | `%{system_time: integer}` | `%{realm: atom, service: atom, conn: Plug.Conn.t()}` |
+| `[:simple_token_authentication, :auth, :failure]` | `%{system_time: integer}` | `%{realm: atom, conn: Plug.Conn.t()}` |
+
+`realm` is `:default` when no `auth_realm` option is given. `service` is the matched service name, or `:global` for the top-level `token`. The presented token is never included.
+
+```elixir
+:telemetry.attach("log-auth-failures", [:simple_token_authentication, :auth, :failure], fn _event, _measurements, %{realm: realm, conn: conn}, _ ->
+  Logger.warning("auth failure in #{realm} from #{:inet.ntoa(conn.remote_ip)}")
+end, nil)
+```
+
 ## Notes
 
 - Token value can be a comma-separated list of tokens
