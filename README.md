@@ -50,10 +50,28 @@ config :simple_token_authentication,
   ]
 ```
 
-4. Configure your connecting application to pass a token in the `authorization` header, e.g.:
+4. Configure your connecting application to pass a token in the `authorization` header, either bare or with the `Bearer` scheme:
 ```elixir
 put_header("authorization", "your-token-here")
+put_header("authorization", "Bearer your-token-here")
 ```
+
+## Header and scheme
+
+By default the plug reads the `authorization` header and accepts either a bare token or `Bearer <token>` (scheme name matched case-insensitively). Both can be changed per plug:
+
+```elixir
+# Require the Bearer scheme
+plug SimpleTokenAuthentication, scheme: :bearer
+
+# Only accept a bare token (behaviour of versions before 1.1)
+plug SimpleTokenAuthentication, scheme: :none
+
+# Read the token from a different header
+plug SimpleTokenAuthentication, header: "x-api-key"
+```
+
+`scheme` must be one of `:any` (default), `:bearer` or `:none`.
 
 ## Realm
 

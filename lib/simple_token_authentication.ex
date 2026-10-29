@@ -1,16 +1,46 @@
 defmodule SimpleTokenAuthentication do
   @moduledoc """
-  A plug that checks for presence of a simple token for authentication
+  A plug that checks for presence of a simple token for authentication.
+
+  ## Options
+
+    * `:auth_realm` - the configured realm to look tokens up in. Defaults to the
+      top-level `:token` and `:service_tokens` configuration.
+    * `:header` - the request header the token is read from. Defaults to
+      `"authorization"`.
+    * `:scheme` - how the header value is interpreted:
+      * `:any` (default) - accepts either a bare token or `Bearer <token>`
+      * `:bearer` - requires `Bearer <token>`
+      * `:none` - requires a bare token
+
+  The `Bearer` scheme name is matched case-insensitively.
   """
   @behaviour Plug
 
   import Plug.Conn
 
-  def init(opts), do: opts
+  @schemes [:any, :bearer, :none]
+
+  def init(opts) do
+    scheme = Keyword.get(opts, :scheme, :any)
+
+    unless scheme in @schemes do
+      raise ArgumentError,
+            "invalid :scheme #{inspect(scheme)}, expected one of #{inspect(@schemes)}"
+    end
+
+    header = opts |> Keyword.get(:header, "authorization") |> String.downcase()
+
+    opts
+    |> Keyword.put(:scheme, scheme)
+    |> Keyword.put(:header, header)
+  end
 
   def call(conn, opts) do
     realm = Keyword.get(opts, :auth_realm)
-    val = get_auth_header(conn)
+
+    val =
+      conn |> get_auth_header(Keyword.get(opts, :header, "authorization")) |> extract_token(opts)
 
     token_map =
       case :persistent_term.get(store(realm), nil) do
@@ -40,10 +70,26 @@ defmodule SimpleTokenAuthentication do
     end)
   end
 
-  defp get_auth_header(conn) do
-    case get_req_header(conn, "authorization") do
+  defp get_auth_header(conn, header) do
+    case get_req_header(conn, header) do
       [val | _] -> val
       _ -> ""
+    end
+  end
+
+  defp extract_token(val, opts) do
+    case {Keyword.get(opts, :scheme, :any), String.split(val, " ", parts: 2)} do
+      {scheme, [prefix, token]} when scheme in [:any, :bearer] ->
+        if String.downcase(prefix) == "bearer", do: token, else: ""
+
+      {:any, [token]} ->
+        token
+
+      {:none, [token]} ->
+        token
+
+      _ ->
+        ""
     end
   end
 
