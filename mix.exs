@@ -1,8 +1,8 @@
 defmodule SimpleTokenAuthentication.Mixfile do
   use Mix.Project
 
-  @source_url "https://github.com/podium/simple_token_authentication"
-  @version "0.9.1"
+  @source_url "https://github.com/epinault/simple_token_authentication"
+  @version "1.0.0"
 
   def project do
     [
@@ -73,7 +73,7 @@ defmodule SimpleTokenAuthentication.Mixfile do
       files: ["lib", "mix.exs", "README*"],
       licenses: ["MIT"],
       links: %{
-        "GitHub" => "https://github.com/podium/simple_token_authentication",
+        "GitHub" => "https://github.com/epinault/simple_token_authentication",
         "Docs" => "https://hexdocs.pm/simple_token_authentication/#{@version}/",
         "Changelog" => "#{@source_url}/blob/master/CHANGELOG.md"
       }

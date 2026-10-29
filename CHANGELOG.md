@@ -1,5 +1,15 @@
 ## [Unreleased]
 
+## [1.0.0] (2026-10-29)
+### Changed
+* First stable release. The plug API and configuration are unchanged from 0.9.1
+* Repository moved to https://github.com/epinault/simple_token_authentication; package links and badges updated
+* CI now tests Elixir 1.17 - 1.20 on OTP 27 - 29; Elixir 1.14 - 1.16 and OTP 25 - 26 are no longer exercised in CI
+* Add a `mix precommit` alias (format, unused-lock check, compile with warnings as errors, test with coverage, credo)
+
+### Security
+* Lock `plug_crypto` 2.2.1 for development (CVE-2026-105963); consumers resolve their own `plug_crypto` and should be on >= 2.2.1
+
 ## [0.9.1] (2026-02-17)
 ### Fixed
 * Use constant-time comparison (`Plug.Crypto.secure_compare/2`) for token lookup to prevent timing attacks
