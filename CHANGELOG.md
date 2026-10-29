@@ -1,5 +1,7 @@
 ## [Unreleased]
 ### Added
+* Emit `[:simple_token_authentication, :auth, :success | :failure]` telemetry events with realm, service and conn metadata (#8)
+* Declare `telemetry` as an explicit dependency (it was already required transitively through `plug`)
 * `Bearer <token>` is now accepted in the `authorization` header alongside a bare token (#7)
 * New plug options: `scheme: :any | :bearer | :none` and `header: "..."` to control how the token is read (#7)
 
