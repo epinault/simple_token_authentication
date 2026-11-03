@@ -13,12 +13,51 @@ defmodule SimpleTokenAuthentication do
       * `:bearer` - requires `Bearer <token>`
       * `:none` - requires a bare token
 
-    * `:on_failure` - how to respond when no token matches. Either a 1-arity
-      function or a `{module, function}` tuple; it receives the `Plug.Conn` and
-      must send a response. The plug halts the conn afterwards regardless.
-      Defaults to a `401` JSON response with a `www-authenticate` header.
+    * `:services` - a non-empty list of service names (atoms) allowed through
+      this particular plug call. Authentication still looks the token up in the
+      whole realm; after a match, a service not in the list is rejected with a
+      `403`. `:global` names the top-level `:token`. When omitted, every
+      service in the realm is accepted. See "Restricting a route to specific
+      services" below.
+    * `:on_failure` - how to respond when no token matches, or when the matched
+      service is not in `:services`. Either a 1-arity function or a
+      `{module, function}` tuple; it receives the `Plug.Conn` and must send a
+      response. The plug halts the conn afterwards regardless. Defaults to a
+      `401` JSON response with a `www-authenticate` header for an unknown
+      token, and a `403` JSON response for a disallowed service.
 
   The `Bearer` scheme name is matched case-insensitively.
+
+  ## Restricting a route to specific services
+
+  Realms pick the token pool; `:services` narrows which services in that pool
+  may use a given pipeline or controller. Tokens stay configured once:
+
+      config :simple_token_authentication,
+        partners: [service_tokens: [acme: "acme-token", globex: "globex-token"]]
+
+  In a router pipeline, for a group of routes:
+
+      pipeline :partners do
+        plug SimpleTokenAuthentication, auth_realm: :partners
+      end
+
+      pipeline :acme_only do
+        plug SimpleTokenAuthentication, auth_realm: :partners, services: [:acme]
+      end
+
+  Or directly in a controller, for a one-off:
+
+      plug SimpleTokenAuthentication, auth_realm: :partners, services: [:acme]
+
+  A `globex` token on an `:acme_only` route authenticates but gets a `403`. An
+  unknown token still gets a `401`. When `:on_failure` is set it is called in
+  both cases; on the `403` path `conn.assigns[:simple_token_auth_service]`
+  holds the matched service name, so a handler can tell the two apart.
+
+  The list is checked for shape when the plug is initialised (atoms,
+  non-empty). A name that is not configured in the realm is not an error; it
+  simply never matches.
 
   ## Telemetry
 
@@ -27,7 +66,9 @@ defmodule SimpleTokenAuthentication do
     * `[:simple_token_authentication, :auth, :success]` - measurements
       `%{system_time: integer}`, metadata `%{realm: atom, service: atom, conn: Plug.Conn.t()}`
     * `[:simple_token_authentication, :auth, :failure]` - measurements
-      `%{system_time: integer}`, metadata `%{realm: atom, conn: Plug.Conn.t()}`
+      `%{system_time: integer}`, metadata `%{realm: atom, conn: Plug.Conn.t()}`,
+      plus `service: atom` when the token matched but the service was rejected
+      by `:services`
 
   `:realm` is `:default` when no `:auth_realm` option is given. `:service` is
   the matched service name, or `:global` for the top-level `:token`. The
@@ -41,39 +82,56 @@ defmodule SimpleTokenAuthentication do
   @schemes [:any, :bearer, :none]
 
   def init(opts) do
-    realm = Keyword.get(opts, :auth_realm)
-
-    unless is_atom(realm) do
-      raise ArgumentError, "invalid :auth_realm #{inspect(realm)}, expected an atom"
-    end
-
+    validate_realm!(Keyword.get(opts, :auth_realm))
     scheme = Keyword.get(opts, :scheme, :any)
-
-    unless scheme in @schemes do
-      raise ArgumentError,
-            "invalid :scheme #{inspect(scheme)}, expected one of #{inspect(@schemes)}"
-    end
+    validate_scheme!(scheme)
+    validate_on_failure!(Keyword.get(opts, :on_failure))
+    validate_services!(Keyword.get(opts, :services))
 
     header = opts |> Keyword.get(:header, "authorization") |> String.downcase()
-
-    case Keyword.get(opts, :on_failure) do
-      nil ->
-        :ok
-
-      fun when is_function(fun, 1) ->
-        :ok
-
-      {mod, fun} when is_atom(mod) and is_atom(fun) ->
-        :ok
-
-      other ->
-        raise ArgumentError,
-              "invalid :on_failure #{inspect(other)}, expected a 1-arity function or {module, function}"
-    end
 
     opts
     |> Keyword.put(:scheme, scheme)
     |> Keyword.put(:header, header)
+  end
+
+  defp validate_realm!(realm) when is_atom(realm), do: :ok
+
+  defp validate_realm!(realm) do
+    raise ArgumentError, "invalid :auth_realm #{inspect(realm)}, expected an atom"
+  end
+
+  defp validate_scheme!(scheme) when scheme in @schemes, do: :ok
+
+  defp validate_scheme!(scheme) do
+    raise ArgumentError,
+          "invalid :scheme #{inspect(scheme)}, expected one of #{inspect(@schemes)}"
+  end
+
+  defp validate_on_failure!(nil), do: :ok
+  defp validate_on_failure!(fun) when is_function(fun, 1), do: :ok
+  defp validate_on_failure!({mod, fun}) when is_atom(mod) and is_atom(fun), do: :ok
+
+  defp validate_on_failure!(other) do
+    raise ArgumentError,
+          "invalid :on_failure #{inspect(other)}, expected a 1-arity function or {module, function}"
+  end
+
+  defp validate_services!(nil), do: :ok
+
+  defp validate_services!([_ | _] = services) do
+    if Enum.all?(services, &is_atom/1) do
+      :ok
+    else
+      raise_services!(services)
+    end
+  end
+
+  defp validate_services!(other), do: raise_services!(other)
+
+  defp raise_services!(value) do
+    raise ArgumentError,
+          "invalid :services #{inspect(value)}, expected a non-empty list of service name atoms"
   end
 
   def call(conn, opts) do
@@ -93,9 +151,18 @@ defmodule SimpleTokenAuthentication do
 
     case secure_lookup(token_map, val) do
       {:ok, service_name} ->
-        emit(:success, %{realm: store(realm), service: service_name, conn: conn})
-        Logger.metadata(service_name: service_name)
-        assign(conn, :simple_token_auth_service, service_name)
+        if allowed?(service_name, Keyword.get(opts, :services)) do
+          emit(:success, %{realm: store(realm), service: service_name, conn: conn})
+          Logger.metadata(service_name: service_name)
+          assign(conn, :simple_token_auth_service, service_name)
+        else
+          emit(:failure, %{realm: store(realm), service: service_name, conn: conn})
+
+          conn
+          |> assign(:simple_token_auth_service, service_name)
+          |> forbidden_response(Keyword.get(opts, :on_failure))
+          |> halt()
+        end
 
       :error ->
         emit(:failure, %{realm: store(realm), conn: conn})
@@ -113,8 +180,21 @@ defmodule SimpleTokenAuthentication do
     |> send_resp(401, ~s({ "error": "Invalid shared key" }))
   end
 
-  defp failure_response(conn, fun, _realm) when is_function(fun, 1), do: fun.(conn)
-  defp failure_response(conn, {mod, fun}, _realm), do: apply(mod, fun, [conn])
+  defp failure_response(conn, handler, _realm), do: invoke_handler(handler, conn)
+
+  defp forbidden_response(conn, nil) do
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(403, ~s({ "error": "Service not allowed" }))
+  end
+
+  defp forbidden_response(conn, handler), do: invoke_handler(handler, conn)
+
+  defp invoke_handler(fun, conn) when is_function(fun, 1), do: fun.(conn)
+  defp invoke_handler({mod, fun}, conn), do: apply(mod, fun, [conn])
+
+  defp allowed?(_service_name, nil), do: true
+  defp allowed?(service_name, services), do: service_name in services
 
   defp emit(event, metadata) do
     :telemetry.execute(

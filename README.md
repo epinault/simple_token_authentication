@@ -105,9 +105,66 @@ defmodule MyApp.Router
 end
 ```
 
+## Restricting a route to specific services
+
+A realm decides which tokens exist; by default every service in the realm is accepted wherever the plug is used. Pass `services` to narrow a pipeline or controller to some of them. Tokens stay configured once, in the realm:
+
+```elixir
+config :simple_token_authentication,
+  partners: [
+    service_tokens: [
+      acme: "acme-token",
+      globex: "globex-token"
+    ]
+  ]
+```
+
+For a group of routes, use a dedicated pipeline. Each scope lists its own pipelines, since `pipe_through` applies to every route that follows it in the scope:
+
+```elixir
+pipeline :partners do
+  plug SimpleTokenAuthentication, auth_realm: :partners
+end
+
+pipeline :acme_only do
+  plug SimpleTokenAuthentication, auth_realm: :partners, services: [:acme]
+end
+
+scope "/", MyApp do
+  pipe_through :partners
+  get "/status", StatusController, :show            # acme or globex
+end
+
+scope "/acme", MyApp do
+  pipe_through :acme_only
+  post "/webhooks", AcmeWebhookController, :create  # acme only
+end
+```
+
+For a single controller, put the plug in the controller instead and leave the route without an auth pipeline:
+
+```elixir
+defmodule MyApp.AcmeWebhookController do
+  use MyApp, :controller
+
+  plug SimpleTokenAuthentication, auth_realm: :partners, services: [:acme]
+  # or only for some actions:
+  # plug SimpleTokenAuthentication, [auth_realm: :partners, services: [:acme]] when action in [:create]
+end
+```
+
+How it behaves:
+
+- A `globex` token on an acme-only route is recognised but rejected with a `403` and the body `{ "error": "Service not allowed" }`. No `www-authenticate` header is sent, since the caller did authenticate.
+- A token that matches nothing still gets the usual `401`.
+- Omitting `services` keeps today's behaviour: any token in the realm is accepted.
+- The list can name several services, e.g. `services: [:acme, :initech]`.
+- With the default realm, `:global` names the top-level `token`, so `services: [:global]` admits only that token and `services: [:reporting]` admits only that service token.
+- `services` must be a non-empty list of atoms; anything else raises when the plug is initialised. A name that is not configured in the realm is not an error, it just never matches.
+
 ## Custom failure response
 
-By default a request with no matching token gets a `401` with a JSON body and a `www-authenticate: Bearer realm="<realm>"` header. Pass `on_failure` to send your own response. It receives the `Plug.Conn` and must send a response; the plug halts the conn afterwards.
+By default a request with no matching token gets a `401` with a JSON body and a `www-authenticate: Bearer realm="<realm>"` header, and a request whose service is not in `services` gets a `403` with a JSON body. Pass `on_failure` to send your own response in both cases. It receives the `Plug.Conn` and must send a response; the plug halts the conn afterwards.
 
 ```elixir
 defmodule MyApp.AuthError do
@@ -125,6 +182,18 @@ plug SimpleTokenAuthentication, on_failure: {MyApp.AuthError, :unauthorized}
 
 A 1-arity anonymous function is also accepted, but Phoenix routers evaluate plug options at compile time, so prefer the `{module, function}` form there.
 
+The same handler is used for an unknown token and for a disallowed service. To tell them apart, check `conn.assigns[:simple_token_auth_service]`: it is set to the matched service name on the `403` path and absent on the `401` path.
+
+```elixir
+def unauthorized(%{assigns: %{simple_token_auth_service: service}} = conn) do
+  send_resp(conn, 403, ~s({"title": "Forbidden", "service": "#{service}"}))
+end
+
+def unauthorized(conn) do
+  send_resp(conn, 401, ~s({"title": "Unauthorized"}))
+end
+```
+
 ## Telemetry
 
 Every request through the plug emits one of two events:
@@ -132,9 +201,9 @@ Every request through the plug emits one of two events:
 | Event | Measurements | Metadata |
 |---|---|---|
 | `[:simple_token_authentication, :auth, :success]` | `%{system_time: integer}` | `%{realm: atom, service: atom, conn: Plug.Conn.t()}` |
-| `[:simple_token_authentication, :auth, :failure]` | `%{system_time: integer}` | `%{realm: atom, conn: Plug.Conn.t()}` |
+| `[:simple_token_authentication, :auth, :failure]` | `%{system_time: integer}` | `%{realm: atom, conn: Plug.Conn.t()}`, plus `service: atom` when rejected by `services` |
 
-`realm` is `:default` when no `auth_realm` option is given. `service` is the matched service name, or `:global` for the top-level `token`. The presented token is never included.
+`realm` is `:default` when no `auth_realm` option is given. `service` is the matched service name, or `:global` for the top-level `token`. On a failure event, `service` is present only when the token matched but the service was not in the `services` list. The presented token is never included.
 
 ```elixir
 :telemetry.attach("log-auth-failures", [:simple_token_authentication, :auth, :failure], fn _event, _measurements, %{realm: realm, conn: conn}, _ ->
@@ -147,6 +216,7 @@ end, nil)
 Misconfiguration raises an `ArgumentError` with a message naming the realm and the expected shape, rather than failing obscurely on the first request:
 
 - `auth_realm` must be an atom (checked when the plug is initialised)
+- `services`, when given, must be a non-empty list of atoms (checked when the plug is initialised)
 - a realm named in `auth_realm` must be configured as a keyword list with a `service_tokens` key
 - `service_tokens` must be a keyword list of service name to token
 - every token must be a string or a list of strings
@@ -160,6 +230,7 @@ If a realm ends up with no tokens at all, a warning is logged once and every req
 - Auth will succeed if token exists in *either* list (`token` or `service_tokens`)
 - Use of a service token will add "service_name" to `Logging.metadata`
 - Service can be identified in the conn.assigns[:simple_token_auth_service]. Will be the name of the service or :global when matching the token key
+- Pass `services: [...]` to a plug call to accept only some of the realm's services on that route
 
 ## Copyright and License
 
