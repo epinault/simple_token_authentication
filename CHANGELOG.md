@@ -1,4 +1,4 @@
-## [Unreleased]
+## [1.1.0] (2026-11-03)
 ### Added
 * Tokens can be stored as a SHA-256 digest with `{:sha256, hex}` in place of the plaintext, opt-in per token; `SimpleTokenAuthentication.hash_token/1` generates the tuple. Plaintext tokens are unchanged and both forms can be mixed (#10)
 * New `services` plug option: a list of service names allowed through that plug call. A token from another service in the same realm is rejected with a `403` (through `on_failure` when set), and the failure telemetry event carries the rejected `service` (#12)
