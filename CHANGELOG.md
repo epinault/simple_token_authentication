@@ -1,5 +1,6 @@
 ## [Unreleased]
 ### Added
+* New `services` plug option: a list of service names allowed through that plug call. A token from another service in the same realm is rejected with a `403` (through `on_failure` when set), and the failure telemetry event carries the rejected `service` (#12)
 * Configuration is validated with clear `ArgumentError` messages: `auth_realm` must be an atom, a realm must be configured as a keyword list with `service_tokens`, and tokens must be strings or lists of strings (#11)
 * A warning is logged once per realm when no tokens are configured, instead of silently rejecting every request (#11)
 * New `on_failure` plug option (`{module, function}` or 1-arity function) to customise the response when no token matches (#9)
