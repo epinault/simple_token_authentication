@@ -28,7 +28,7 @@ end
 
 ```elixir
 def deps do
-  [{:simple_token_authentication, "~> 1.0"}]
+  [{:simple_token_authentication, "~> 1.1"}]
 end
 ```
 
