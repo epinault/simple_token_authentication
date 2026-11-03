@@ -162,6 +162,36 @@ How it behaves:
 - With the default realm, `:global` names the top-level `token`, so `services: [:global]` admits only that token and `services: [:reporting]` admits only that service token.
 - `services` must be a non-empty list of atoms; anything else raises when the plug is initialised. A name that is not configured in the realm is not an error, it just never matches.
 
+## Hashed tokens
+
+Tokens are stored in plaintext in config by default. Any token can instead be stored as its SHA-256 digest by writing it as a `{:sha256, hex}` tuple. This is opt-in per token: a plain string behaves exactly as before, and both forms can be mixed, including in one service's token list while rotating.
+
+Generate the digest with `SimpleTokenAuthentication.hash_token/1`:
+
+```sh
+mix run -e 'IO.inspect(SimpleTokenAuthentication.hash_token("acme-secret"))'
+# {:sha256, "307c609f87da43c3d563428a4f7efdf9857f4871fd10465732c4ab11a985a08c"}
+```
+
+Paste the tuple where the plaintext used to be:
+
+```elixir
+config :simple_token_authentication,
+  token: {:sha256, "307c609f87da43c3d563428a4f7efdf9857f4871fd10465732c4ab11a985a08c"},
+  service_tokens: [
+    acme: {:sha256, "..."},
+    globex: "still-plaintext"
+  ]
+```
+
+Clients are unaffected and keep sending the plaintext token. The plug hashes the presented value and compares digests in constant time. Presenting the digest itself does not authenticate.
+
+Rules and limits:
+
+- The digest must be 64 hex characters, upper or lower case, and only `:sha256` is supported. Anything else raises an `ArgumentError` naming the service and realm when the realm is first used.
+- This protects the token at rest in config files, config dumps and the running VM. It does not protect it in transit (use TLS), on the client, or against guessing.
+- The hash is unsalted. Use long random tokens, for example `:crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)`. A short or guessable token is as weak hashed as it is in plaintext.
+
 ## Custom failure response
 
 By default a request with no matching token gets a `401` with a JSON body and a `www-authenticate: Bearer realm="<realm>"` header, and a request whose service is not in `services` gets a `403` with a JSON body. Pass `on_failure` to send your own response in both cases. It receives the `Plug.Conn` and must send a response; the plug halts the conn afterwards.
@@ -219,13 +249,15 @@ Misconfiguration raises an `ArgumentError` with a message naming the realm and t
 - `services`, when given, must be a non-empty list of atoms (checked when the plug is initialised)
 - a realm named in `auth_realm` must be configured as a keyword list with a `service_tokens` key
 - `service_tokens` must be a keyword list of service name to token
-- every token must be a string or a list of strings
+- every token must be a string, a `{:sha256, hex_digest}` tuple, or a list of those
+- a hashed token must use `:sha256` and be a 64 hex character digest
 
 If a realm ends up with no tokens at all, a warning is logged once and every request to that realm is rejected.
 
 ## Notes
 
 - Token value can be a comma-separated list of tokens
+- Any token can be stored as a `{:sha256, hex}` digest instead of plaintext, see "Hashed tokens"
 - Specifying `service_tokens` is optional
 - Auth will succeed if token exists in *either* list (`token` or `service_tokens`)
 - Use of a service token will add "service_name" to `Logging.metadata`
