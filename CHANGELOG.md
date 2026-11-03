@@ -1,5 +1,6 @@
 ## [Unreleased]
 ### Added
+* Tokens can be stored as a SHA-256 digest with `{:sha256, hex}` in place of the plaintext, opt-in per token; `SimpleTokenAuthentication.hash_token/1` generates the tuple. Plaintext tokens are unchanged and both forms can be mixed (#10)
 * New `services` plug option: a list of service names allowed through that plug call. A token from another service in the same realm is rejected with a `403` (through `on_failure` when set), and the failure telemetry event carries the rejected `service` (#12)
 * Configuration is validated with clear `ArgumentError` messages: `auth_realm` must be an atom, a realm must be configured as a keyword list with `service_tokens`, and tokens must be strings or lists of strings (#11)
 * A warning is logged once per realm when no tokens are configured, instead of silently rejecting every request (#11)
