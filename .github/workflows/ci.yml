@@ -9,7 +9,7 @@ on:
       - master
 
 jobs:
-  setup:
+  test:
     runs-on: ${{ matrix.os }}
     env:
       MIX_ENV: test
