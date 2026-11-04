@@ -95,4 +95,21 @@ defmodule SimpleTokenAuthentication.ConfigValidationTest do
       assert length(String.split(log, "no tokens configured")) == 2
     end
   end
+
+  describe "recovering from an empty realm" do
+    test "picks up tokens configured after the first request, without a manual erase" do
+      do_call = fn value ->
+        req = put_req_header(conn(:get, "/foo"), "authorization", value)
+        SimpleTokenAuthentication.call(req, SimpleTokenAuthentication.init([]))
+      end
+
+      # realm starts empty
+      assert do_call.("late-token").status == 401
+
+      # tokens appear later (e.g. runtime config); no restart, no persistent_term.erase
+      Application.put_env(:simple_token_authentication, :token, "late-token")
+
+      refute do_call.("late-token").halted
+    end
+  end
 end
