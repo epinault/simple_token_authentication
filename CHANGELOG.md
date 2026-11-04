@@ -1,3 +1,11 @@
+## [Unreleased]
+### Fixed
+* A realm that has no tokens on its first request now picks up tokens configured later without a restart; it is retried on each request until tokens appear, and the "no tokens configured" warning still logs only once (#23)
+* Under `scheme: :none` the whole header value is now used as the token, so a configured token may contain a space; `:any` and `:bearer` still split on the first space to detect the `Bearer` prefix (#24)
+
+### Changed
+* Documented when each configuration check runs (plug options at init, token config on first request), corrected the stale "comma-separated list" note (a token value is a string or list of strings), and recorded why the constant-time lookup stops at the first match (#22, #25, #26)
+
 ## [1.1.0] (2026-11-03)
 ### Added
 * Tokens can be stored as a SHA-256 digest with `{:sha256, hex}` in place of the plaintext, opt-in per token; `SimpleTokenAuthentication.hash_token/1` generates the tuple. Plaintext tokens are unchanged and both forms can be mixed (#10)

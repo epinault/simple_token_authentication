@@ -187,16 +187,11 @@ defmodule SimpleTokenAuthentication do
     realm = Keyword.get(opts, :auth_realm)
 
     val =
-      conn |> get_auth_header(Keyword.get(opts, :header, "authorization")) |> extract_token(opts)
+      conn
+      |> get_auth_header(Keyword.get(opts, :header, "authorization"))
+      |> extract_token(Keyword.get(opts, :scheme, :any))
 
-    token_map =
-      case :persistent_term.get(store(realm), nil) do
-        nil ->
-          build_token_map(realm)
-
-        val ->
-          val
-      end
+    token_map = fetch_token_map(realm)
 
     case secure_lookup(token_map, val) do
       {:ok, service_name} ->
@@ -253,6 +248,10 @@ defmodule SimpleTokenAuthentication do
     )
   end
 
+  # Each candidate is compared with Plug.Crypto.secure_compare/2, which is
+  # constant time, so token bytes never leak. The loop stops at the first
+  # match; that is safe here because the response already reveals pass/fail and
+  # the number of comparisons does not depend on the presented value's content.
   defp secure_lookup(token_map, val) do
     digest = :crypto.hash(:sha256, val)
 
@@ -272,23 +271,34 @@ defmodule SimpleTokenAuthentication do
     end
   end
 
-  defp extract_token(val, opts) do
-    case {Keyword.get(opts, :scheme, :any), String.split(val, " ", parts: 2)} do
-      {scheme, [prefix, token]} when scheme in [:any, :bearer] ->
-        if String.downcase(prefix) == "bearer", do: token, else: ""
+  # With :none there is no scheme to parse, so the whole header value is the
+  # token. This lets a configured token contain a space. With :any/:bearer the
+  # value is split to detect the Bearer prefix, so those tokens must not
+  # contain a space.
+  defp extract_token(val, :none), do: val
 
-      {:any, [token]} ->
-        token
-
-      {:none, [token]} ->
-        token
-
-      _ ->
-        ""
+  defp extract_token(val, scheme) do
+    case String.split(val, " ", parts: 2) do
+      [prefix, token] -> if String.downcase(prefix) == "bearer", do: token, else: ""
+      [token] when scheme == :any -> token
+      _ -> ""
     end
   end
 
-  defp build_token_map(realm) do
+  # The built map is cached in :persistent_term, keyed by realm. An empty realm
+  # is cached as the :empty sentinel rather than %{} so that a later config
+  # change is picked up without a restart (#23): while :empty we rebuild on
+  # each request and only overwrite the cache once tokens appear. Erasing the
+  # realm key resets this, which is how tests stay isolated.
+  defp fetch_token_map(realm) do
+    case :persistent_term.get(store(realm), nil) do
+      nil -> build_token_map(realm, warn_if_empty: true)
+      :empty -> build_token_map(realm, warn_if_empty: false)
+      token_map -> token_map
+    end
+  end
+
+  defp build_token_map(realm, warn_if_empty: warn_if_empty) do
     services = service_tokens(realm)
 
     token_map =
@@ -300,16 +310,26 @@ defmodule SimpleTokenAuthentication do
           Map.put(acc, token_key(token), service)
       end
 
-    if token_map == %{} do
+    cache_token_map(realm, token_map, warn_if_empty)
+
+    token_map
+  end
+
+  defp cache_token_map(realm, token_map, warn_if_empty) when map_size(token_map) == 0 do
+    if warn_if_empty do
       Logger.warning(
         "SimpleTokenAuthentication: no tokens configured for realm #{inspect(store(realm))}, " <>
           "every request will be rejected"
       )
+
+      # Record that we have warned, so repeated empty requests stay quiet while
+      # still rebuilding to detect a later config change.
+      :persistent_term.put(store(realm), :empty)
     end
+  end
 
+  defp cache_token_map(realm, token_map, _warn_if_empty) do
     :persistent_term.put(store(realm), token_map)
-
-    token_map
   end
 
   defp service_tokens(nil) do

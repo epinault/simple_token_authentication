@@ -243,20 +243,27 @@ end, nil)
 
 ## Configuration errors
 
-Misconfiguration raises an `ArgumentError` with a message naming the realm and the expected shape, rather than failing obscurely on the first request:
+Misconfiguration raises an `ArgumentError` with a message naming the realm and the expected shape. Checks fall into two groups by *when* they run.
 
-- `auth_realm` must be an atom (checked when the plug is initialised)
-- `services`, when given, must be a non-empty list of atoms (checked when the plug is initialised)
+Plug options are checked when the plug is initialised (at router compile time for a Phoenix router):
+
+- `auth_realm` must be an atom
+- `scheme` must be `:any`, `:bearer` or `:none`
+- `on_failure`, when given, must be a 1-arity function or `{module, function}`
+- `services`, when given, must be a non-empty list of atoms
+
+Token configuration is read from the application environment, which is not available at init, so it is checked the first time a realm is used (on the first request to that realm):
+
 - a realm named in `auth_realm` must be configured as a keyword list with a `service_tokens` key
 - `service_tokens` must be a keyword list of service name to token
 - every token must be a string, a `{:sha256, hex_digest}` tuple, or a list of those
 - a hashed token must use `:sha256` and be a 64 hex character digest
 
-If a realm ends up with no tokens at all, a warning is logged once and every request to that realm is rejected.
+If a realm ends up with no tokens at all, a warning is logged once and every request to that realm is rejected. Such a realm is retried on each request, so adding tokens later takes effect without a restart. A realm that already has tokens is cached; changing its tokens needs a restart.
 
 ## Notes
 
-- Token value can be a comma-separated list of tokens
+- A token value may be a single string or a list of strings (and a `{:sha256, hex}` tuple, see "Hashed tokens")
 - Any token can be stored as a `{:sha256, hex}` digest instead of plaintext, see "Hashed tokens"
 - Specifying `service_tokens` is optional
 - Auth will succeed if token exists in *either* list (`token` or `service_tokens`)

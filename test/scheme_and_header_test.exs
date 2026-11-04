@@ -72,4 +72,16 @@ defmodule SimpleTokenAuthentication.SchemeAndHeaderTest do
       assert_raise ArgumentError, fn -> SimpleTokenAuthentication.init(scheme: :basic) end
     end
   end
+
+  describe "scheme: :none with unusual token values" do
+    test "accepts a token that contains a space" do
+      Application.put_env(:simple_token_authentication, :token, "two words")
+      assert call("authorization", "two words", scheme: :none).status != 401
+    end
+
+    test "treats the whole value as the token, so a Bearer prefix is not stripped" do
+      # "secret" is configured, not "Bearer secret"
+      assert call("authorization", "Bearer secret", scheme: :none).status == 401
+    end
+  end
 end
