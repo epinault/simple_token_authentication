@@ -14,8 +14,6 @@ defmodule SimpleTokenAuthentication.Mixfile do
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       dialyzer: [
-        ignore_warnings: ".dialyzer.ignore-warnings",
-        list_unused_filters: true,
         plt_add_apps: [:mix]
       ],
       docs: docs(),
@@ -60,7 +58,8 @@ defmodule SimpleTokenAuthentication.Mixfile do
       main: "readme",
       extras: [
         {:"README.md", title: "Readme"},
-        "CHANGELOG.md"
+        "CHANGELOG.md",
+        {:"LICENSE.md", title: "License"}
       ],
       source_url: @source_url,
       source_ref: "v#{@version}",
