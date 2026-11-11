@@ -55,6 +55,20 @@ defmodule SimpleTokenAuthentication.ConfigValidationTest do
       assert_raise ArgumentError, ~r/service_tokens/, fn -> call(auth_realm: :bad_realm) end
     end
 
+    test "raises when the realm config is a list but not a keyword list" do
+      Application.put_env(:simple_token_authentication, :bad_realm, ["a", "b"])
+
+      assert_raise ArgumentError, ~r/:bad_realm.*keyword list/s, fn ->
+        call(auth_realm: :bad_realm)
+      end
+    end
+
+    test "raises when the default realm service_tokens is a list but not a keyword list" do
+      Application.put_env(:simple_token_authentication, :service_tokens, ["a", "b"])
+
+      assert_raise ArgumentError, ~r/service_tokens.*:default/s, fn -> call([]) end
+    end
+
     test "raises when a service token is not a string" do
       Application.put_env(:simple_token_authentication, :service_tokens, acme: 123)
 
@@ -110,6 +124,25 @@ defmodule SimpleTokenAuthentication.ConfigValidationTest do
       Application.put_env(:simple_token_authentication, :token, "late-token")
 
       refute do_call.("late-token").halted
+    end
+  end
+
+  describe "caching a populated realm" do
+    test "builds the token map once and does not pick up a changed token without a restart" do
+      do_call = fn value ->
+        req = put_req_header(conn(:get, "/foo"), "authorization", value)
+        SimpleTokenAuthentication.call(req, SimpleTokenAuthentication.init([]))
+      end
+
+      Application.put_env(:simple_token_authentication, :token, "first")
+      refute do_call.("first").halted
+
+      # change the token after the realm is cached; no persistent_term.erase
+      Application.put_env(:simple_token_authentication, :token, "second")
+
+      # the cached map still holds the original token
+      refute do_call.("first").halted
+      assert do_call.("second").status == 401
     end
   end
 end

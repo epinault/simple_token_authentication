@@ -145,4 +145,33 @@ defmodule SimpleTokenAuthentication.HashedTokensTest do
       assert_raise ArgumentError, ~r/:token.*64 hex/s, fn -> call("anything") end
     end
   end
+
+  describe "hashed token combined with the services allow list" do
+    setup do
+      Application.put_env(:simple_token_authentication, :partners,
+        service_tokens: [
+          acme: SimpleTokenAuthentication.hash_token("acme-secret"),
+          globex: "globex-plain"
+        ]
+      )
+
+      :ok
+    end
+
+    test "an allowed service authenticates with its hashed token" do
+      conn = call("acme-secret", auth_realm: :partners, services: [:acme])
+      refute conn.halted
+      assert conn.assigns[:simple_token_auth_service] == :acme
+    end
+
+    test "a disallowed service is still rejected with a 403 even when its token is valid" do
+      conn = call("globex-plain", auth_realm: :partners, services: [:acme])
+      assert conn.status == 403
+      assert conn.assigns[:simple_token_auth_service] == :globex
+    end
+
+    test "an unknown token is a 401, not a 403" do
+      assert call("nope", auth_realm: :partners, services: [:acme]).status == 401
+    end
+  end
 end
